@@ -42,6 +42,8 @@ export function createDefaultProfile(): UserProfile {
       review: true
     },
     notificationsEnabled: false,
+    closedRemindersEnabled: false,
+    closedRemindersStatus: "idle",
     hadBrokenStreak: false,
     createdAt: now,
     updatedAt: now

@@ -40,6 +40,15 @@ export interface UserProfile {
   streakFreezesAvailable: number;
   reminders: ReminderSettings;
   notificationsEnabled: boolean;
+  closedRemindersEnabled: boolean;
+  closedRemindersStatus:
+    | "idle"
+    | "unsupported"
+    | "not_configured"
+    | "permission_denied"
+    | "subscribed"
+    | "failed";
+  pushSubscriptionEndpoint?: string;
   hadBrokenStreak: boolean;
   createdAt: string;
   updatedAt: string;

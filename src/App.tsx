@@ -48,6 +48,13 @@ import {
 import { calculateDayStats, goalsNeededForStreak, reviewDay } from "./utils/streak";
 import { categories, commonGoals } from "./data/defaults";
 import { usePersistentState } from "./hooks/usePersistentState";
+import {
+  disableClosedReminders,
+  enableClosedReminders,
+  hasPushReminderConfig,
+  registerMomentumServiceWorker,
+  supportsClosedReminders
+} from "./services/pushReminders";
 import type {
   AppState,
   BadgeDefinition,
@@ -137,6 +144,10 @@ export default function App() {
   };
 
   useReminderEngine(state, pushToast);
+
+  useEffect(() => {
+    registerMomentumServiceWorker().catch(() => undefined);
+  }, []);
 
   const commitState = (
     updater: (current: AppState) => AppState,
@@ -371,6 +382,32 @@ export default function App() {
     );
   };
 
+  const enableClosedReminderNotifications = async () => {
+    const result = await enableClosedReminders(state.profile, state.goals);
+    saveProfile(
+      {
+        notificationsEnabled:
+          result.status === "subscribed" || state.profile.notificationsEnabled,
+        closedRemindersEnabled: result.status === "subscribed",
+        closedRemindersStatus: result.status,
+        pushSubscriptionEndpoint: result.subscriptionEndpoint
+      },
+      result.message
+    );
+  };
+
+  const disableClosedReminderNotifications = async () => {
+    const result = await disableClosedReminders();
+    saveProfile(
+      {
+        closedRemindersEnabled: false,
+        closedRemindersStatus: result.status,
+        pushSubscriptionEndpoint: undefined
+      },
+      result.message
+    );
+  };
+
   if (!state.onboarded) {
     return (
       <Onboarding
@@ -458,6 +495,10 @@ export default function App() {
               state={state}
               saveProfile={saveProfile}
               requestNotifications={requestNotifications}
+              enableClosedReminders={enableClosedReminderNotifications}
+              disableClosedReminders={disableClosedReminderNotifications}
+              closedReminderConfigReady={hasPushReminderConfig()}
+              closedReminderSupported={supportsClosedReminders()}
               exportJson={helpers.exportJson}
               reset={helpers.reset}
             />
@@ -1287,12 +1328,20 @@ function SettingsPage({
   state,
   saveProfile,
   requestNotifications,
+  enableClosedReminders,
+  disableClosedReminders,
+  closedReminderConfigReady,
+  closedReminderSupported,
   exportJson,
   reset
 }: {
   state: AppState;
   saveProfile: (patch: Partial<UserProfile>, toast?: string) => void;
   requestNotifications: () => void;
+  enableClosedReminders: () => void;
+  disableClosedReminders: () => void;
+  closedReminderConfigReady: boolean;
+  closedReminderSupported: boolean;
   exportJson: () => string;
   reset: () => void;
 }) {
@@ -1446,7 +1495,7 @@ function SettingsPage({
 
         <div className="space-y-4">
           <Panel>
-            <PanelTitle icon={Bell} title="Notifications" detail="Optional browser permission" />
+            <PanelTitle icon={Bell} title="Notifications" detail="Open-app and closed-app reminder controls" />
             <p className="text-sm leading-6 text-slate-600">
               Status: {state.profile.notificationsEnabled ? "enabled" : "not enabled"}.
               In-app reminders still appear while Momentum is open.
@@ -1458,6 +1507,61 @@ function SettingsPage({
               <Bell size={18} />
               Request notification access
             </button>
+          </Panel>
+
+          <Panel>
+            <PanelTitle
+              icon={Shield}
+              title="Closed-app reminders"
+              detail="Uses Web Push through a service worker."
+            />
+            <div className="space-y-3 text-sm leading-6 text-slate-600">
+              <p>
+                Status:{" "}
+                <span className="font-semibold text-ink">
+                  {closedReminderStatusLabel(state.profile.closedRemindersStatus)}
+                </span>
+              </p>
+              <p>
+                These reminders can work when Momentum is closed only after a Web
+                Push backend is configured. GitHub Pages can host the app, but it
+                cannot wake the browser by itself.
+              </p>
+              {!closedReminderSupported ? (
+                <Notice tone="warning" title="Browser support needed">
+                  This browser does not expose the service worker Push API required
+                  for closed-app reminders.
+                </Notice>
+              ) : null}
+              {!closedReminderConfigReady ? (
+                <Notice tone="info" title="Backend not configured">
+                  Add `VITE_PUSH_REMINDER_PUBLIC_KEY` and
+                  `VITE_PUSH_REMINDER_SUBSCRIBE_URL` to connect a reminder backend.
+                </Notice>
+              ) : null}
+            </div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <button
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-pine px-4 py-2.5 font-semibold text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!closedReminderSupported}
+                onClick={enableClosedReminders}
+              >
+                <Bell size={18} />
+                Connect closed reminders
+              </button>
+              <button
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-black/10 bg-white px-4 py-2.5 font-semibold text-slate-700 transition hover:bg-slate-100"
+                onClick={disableClosedReminders}
+              >
+                <X size={18} />
+                Turn off
+              </button>
+            </div>
+            {state.profile.pushSubscriptionEndpoint ? (
+              <p className="mt-3 break-all text-xs text-slate-500">
+                Endpoint: {state.profile.pushSubscriptionEndpoint}
+              </p>
+            ) : null}
           </Panel>
 
           <Panel>
@@ -2152,6 +2256,19 @@ function ResultPill({ result }: { result: DailyLog["streakResult"] }) {
       {result.replace("_", " ")}
     </span>
   );
+}
+
+function closedReminderStatusLabel(status: UserProfile["closedRemindersStatus"]) {
+  const labels: Record<UserProfile["closedRemindersStatus"], string> = {
+    idle: "off",
+    unsupported: "unsupported",
+    not_configured: "backend needed",
+    permission_denied: "permission denied",
+    subscribed: "connected",
+    failed: "failed"
+  };
+
+  return labels[status];
 }
 
 function ReminderLine({
