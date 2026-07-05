@@ -16,9 +16,10 @@ Open the URL printed by Vite. App data is persisted in browser storage under `mo
 ```bash
 npm run test
 npm run build
+npm run worker:check
 ```
 
-## Reminder behavior
+## Reminder Behavior
 
 Momentum has two reminder modes:
 
@@ -59,6 +60,68 @@ The subscribe endpoint receives:
 That backend should store subscriptions, run a timezone-aware schedule, and send
 Web Push payloads to the browser push endpoint. The service worker displays the
 notification and opens Momentum when the user clicks it.
+
+## Closed-App Reminder Backend
+
+This repo includes a Cloudflare Worker backend scaffold in
+`workers/reminders`. It stores Push API subscriptions in D1, wakes up every five
+minutes, checks each user's local reminder times, and sends Web Push requests
+even when Momentum is closed. The first version sends an empty push request, so
+the service worker shows the default Momentum notification text.
+
+Cloudflare Workers and D1 both have free tiers that should be enough for a
+personal tracker. Check the Cloudflare dashboard if usage grows, because free
+limits reset daily and extra usage rules can change.
+
+To connect it:
+
+1. Generate Web Push keys.
+
+   ```bash
+   npm run vapid:generate
+   ```
+
+2. Create a D1 database in your Cloudflare account.
+
+   ```bash
+   npx wrangler d1 create momentum_reminders
+   ```
+
+3. Copy the returned `database_id` into
+   `workers/reminders/wrangler.toml`, and replace
+   `REPLACE_WITH_PUBLIC_VAPID_KEY` with the public key from step 1.
+
+4. Store the private key as a Cloudflare secret.
+
+   ```bash
+   npx wrangler secret put VAPID_PRIVATE_JWK --config workers/reminders/wrangler.toml
+   ```
+
+   Paste the `VAPID_PRIVATE_JWK` JSON printed by `npm run vapid:generate`.
+
+5. Apply the D1 migration.
+
+   ```bash
+   npx wrangler d1 migrations apply momentum_reminders --remote --config workers/reminders/wrangler.toml
+   ```
+
+6. Deploy the Worker.
+
+   ```bash
+   npm run worker:deploy
+   ```
+
+7. In the GitHub repo, add these repository variables under
+   Settings -> Secrets and variables -> Actions -> Variables:
+
+   ```bash
+   VITE_PUSH_REMINDER_PUBLIC_KEY=<public key from npm run vapid:generate>
+   VITE_PUSH_REMINDER_SUBSCRIBE_URL=https://<your-worker-subdomain>.workers.dev/subscribe
+   VITE_PUSH_REMINDER_UNSUBSCRIBE_URL=https://<your-worker-subdomain>.workers.dev/unsubscribe
+   ```
+
+8. Re-run the GitHub Pages workflow or push a new commit. After that, Momentum
+   can subscribe the browser to the Worker-backed closed-app reminders.
 
 ## Deploy to GitHub Pages
 

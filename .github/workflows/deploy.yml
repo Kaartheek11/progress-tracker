@@ -35,6 +35,10 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          VITE_PUSH_REMINDER_PUBLIC_KEY: ${{ vars.VITE_PUSH_REMINDER_PUBLIC_KEY }}
+          VITE_PUSH_REMINDER_SUBSCRIBE_URL: ${{ vars.VITE_PUSH_REMINDER_SUBSCRIBE_URL }}
+          VITE_PUSH_REMINDER_UNSUBSCRIBE_URL: ${{ vars.VITE_PUSH_REMINDER_UNSUBSCRIBE_URL }}
 
       - name: Configure Pages
         uses: actions/configure-pages@v6
