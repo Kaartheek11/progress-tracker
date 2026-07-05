@@ -18,6 +18,19 @@ npm run test
 npm run build
 ```
 
+## Deploy to GitHub Pages
+
+This repo includes a GitHub Actions workflow at `.github/workflows/deploy.yml`.
+After the project is pushed to GitHub, every push to `main` will:
+
+1. Install dependencies with `npm ci`.
+2. Run the test suite.
+3. Build the Vite app.
+4. Publish `dist` to GitHub Pages.
+
+The Vite base path is detected from `GITHUB_REPOSITORY`, so the app works from a
+standard repo URL such as `https://<user>.github.io/<repo>/`.
+
 ## Notes
 
 - Streaks only count goals planned on time before the planning deadline for the goal's planned date.
